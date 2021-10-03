@@ -16,11 +16,20 @@ INLINE_REPORT = '/meldeform'
 ###############################
 # TODO: Put into Hash map in different File
 
+YES = "Ja"
+NO = "Nein"
+
+RATING = 1
+ASKED_FOR_TIPS = 2
+GIVING_TIPS = 3
+
+
 class Registerbot
     def initialize(bot_token, report_db, image_path)
         @token = bot_token
         @reports = report_db
         @images = image_path
+        @user_state = Hash.new
         Telegram::Bot::Client::run(@token) do |reg_bot|
             @bot = reg_bot
         end
@@ -54,10 +63,10 @@ class Registerbot
     end
 
     def help
-        send_message("Folgende Befehle kannst du aktuell benutzen:\n\n#{START}: Zeigt die Begrüßungsnachricht an.\n\n#{HELP}: Zeigt alle Verfügbaren Befehle an.\n\n#{COUNT}: Zeigt die Gesamtzahl der beim Bot eingegangenen Meldungen an.\n\n#{ALL}: Gibt ALLE eingegangenen Meldungen aus (Leider noch unformatiert und schlecht lesbar)\n\n#{REPORT} <Meldung>: Gib uns eine neue Meldung an, am besten in folgendem Format: <Datum des Geschehens/der Entdeckung> <Ort> <Geschehnis/Entdeckung> <Kontaktmöglichkeit für Rückfragen(optional)>. Du kannst auch mehrere Meldungen auf einmal abgeben, indem du diese mit dem Prozentzeichen '%' trennst.\n\n#{LAST} <(optional) Tage>: Gibt die Meldungen der letzten 7 Tage aus. Du kannst selber eine Anzahl an Tagen angeben, von denen du die Meldungen sehen möchtest.")
+        send_message("Folgende Befehle kannst du aktuell benutzen:\n\n#{START}: Zeigt die Begrüßungsnachricht an.\n\n#{HELP}: Zeigt alle Verfügbaren Befehle an.\n\n#{COUNT}: Zeigt die Gesamtzahl der beim Bot eingegangenen Meldungen an.\n\n#{ALL}: Gibt ALLE eingegangenen Meldungen aus (Leider noch unformatiert und schlecht lesbar)\n\n#{REPORT} <Meldung>: Gib mir eine neue Meldung an, am besten in folgendem Format: <Datum des Geschehens/der Entdeckung> <Ort> <Geschehnis/Entdeckung> <Kontaktmöglichkeit für Rückfragen(optional)>. Du kannst auch mehrere Meldungen auf einmal abgeben, indem du diese mit dem Prozentzeichen '%' trennst.\n\n#{LAST} <(optional) Tage>: Gibt die Meldungen der letzten 7 Tage aus. Du kannst selber eine Anzahl an Tagen angeben, von denen du die Meldungen sehen möchtest.\n\n#{FEEDBACK}: Gib mir Feedback :) Bewerte mich zuerst auf einer Skala von 1-5 und dann kannst du mir auch noch Tipps geben!")
     end
 
-    def report(args)
+    def report(args) # TODO: refactor to make Report entry a bit more form like
         if args.count < 2
             reply("Du hast mir leider keine Meldung mitgeteilt. Bitte schreibe nach dem '/meldung' ein paar Worte.")
         else
@@ -105,9 +114,38 @@ class Registerbot
         end
     end
 
-    def feedback
-        rating = Telegram::Bot::Types::ReplyKeyboardMarkup.new(keyboard:[%w(1 2 3 4 5)], one_time_keyboard: true, resize_keyboard: true)
+    def feedback # TODO: save Feedback to new Database Table
+        @user_state[@message.chat.id] = RATING
+        rating = Telegram::Bot::Types::ReplyKeyboardMarkup.new(keyboard:[%w(1 2 3 4 5)], resize_keyboard: true)
         @bot.api.send_message(chat_id: @message.chat.id, text:"Auf einer Skala von 1 (sehr schlecht) bis 5 (sehr gut), wie gefalle ich dir?", reply_markup: rating)
+    end
+
+    def get_rating(args)
+        @user_state[@message.chat.id] = ASKED_FOR_TIPS
+        @bot.api.send_message(chat_id: @message.chat.id, text:"Danke für deine Bewertung!")
+        decision = Telegram::Bot::Types::ReplyKeyboardMarkup.new(keyboard:[%w(Ja Nein)], resize_keyboard: true)
+        @bot.api.send_message(chat_id: @message.chat.id, text:"Möchtest du mir Verbesserungsvorschläge, Wünsche oder Fehlerberichte geben?", reply_markup: decision)
+    end
+
+    def get_decision(args)
+        case args[0]
+        when YES
+            @user_state[@message.chat.id] = GIVING_TIPS
+            hide = Telegram::Bot::Types::ReplyKeyboardRemove.new(remove_keyboard: true, selective: nil)
+            @bot.api.send_message(chat_id: @message.chat.id, text:"Was würdest du dir von mir wünschen? Was gefällt dir gut/schlecht?", reply_markup: hide)
+        when NO
+            @user_state.delete(@message.chat.id)
+            send_message("Okay.")
+        end
+    end
+
+    def get_tips(args)
+        @user_state.delete(@message.chat.id)
+        send_message("Vielen Dank für deine Tipps! Dank dir kann ich weiterhin mein bestes geben!")
+    end
+
+    def unknown
+        send_message("Sorry, ich weiß nicht was du mir sagen möchtest. Probier doch mal /help, um zu sehen was ich kann.")
     end
 
     def bot_loop
@@ -135,6 +173,17 @@ class Registerbot
                 last(args)
             when FEEDBACK
                 feedback()
+            else
+                case @user_state[@message.chat.id]
+                when RATING
+                    get_rating(args)
+                when ASKED_FOR_TIPS
+                    get_decision(args)
+                when GIVING_TIPS
+                    get_tips(args)
+                when nil
+                    unknown()
+                end
             end
         end
     end     
