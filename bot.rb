@@ -2,6 +2,15 @@ require 'telegram/bot'
 require 'sequel'
 require 'FileUtils'
 require 'down'
+require 'logger'
+
+logger = Logger.new(STDOUT)
+logger.level = Logger::DEBUG
+
+TOKEN_PATH = "token.priv"
+IMAGE_PATH = "images"
+DB_FOLDER = "data"
+DB_FILE = "reports.db"
 
 ###############################
 # LIST OF COMMAND IDENTIFIERS #
@@ -32,10 +41,22 @@ def format_results(res)
 end
 
 # Open the Database file
-FileUtils.touch 'tmp/testing.db'
-DB = Sequel.sqlite('tmp/testing.db') # TODO: Needs Check if file or folder exists
+begin
+    Dir.mkdir(DB_FOLDER) unless File.exists?(DB_FOLDER)
+    DB = Sequel.sqlite("#{DB_FOLDER}/#{DB_FILE}")
+rescue
+    logger.fatal("Fatal Error Occured during Database initialisation.")
+    return
+end
 
-# TODO: Check if Imagefolder exists, put path into constant
+# Check if the Image folder can be accessed
+begin
+    Dir.mkdir(IMAGE_PATH) unless File.exists?(IMAGE_PATH)
+rescue
+    logger.fatal("Imagefolder could neither be opened, nor created")
+    return
+end
+
 
 # Create Table
 # TODO: Add image field
@@ -51,15 +72,19 @@ end
 items = DB[:items]
 
 # The Telegram API Bot token. Should be stored in a token.priv file.
-token_file = File.new("token.priv", "r")
-token =""
-if token_file
-    token_file.each_line do |line|
-        token += line
+begin
+    token_file = File.new(TOKEN_PATH, "r")
+    token =""
+    if token_file
+        token_file.each_line do |line|
+            token += line
+        end
     end
+    token_file.close
+rescue
+    logger.fatal("Error occured during Token reading.")
+    return
 end
-puts token
-token_file.close
 
 # Create new Bot and make it listen to commands
 # TODO: make send_message and reply their own method
