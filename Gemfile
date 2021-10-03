@@ -1,0 +1,5 @@
+source 'https://rubygems.org'
+gem 'telegram/bot'
+gem 'sequel'
+gem 'FileUtils'
+gem 'down'

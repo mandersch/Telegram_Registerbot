@@ -1,0 +1,4 @@
+*.lock
+*.priv
+images
+tmp
