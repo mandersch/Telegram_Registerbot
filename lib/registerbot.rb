@@ -1,7 +1,8 @@
 require 'telegram/bot'
 require 'sequel'
 require 'down'
-require 'FileUtils'
+require 'fileutils'
+require 'logger'
 
 ###############################
 # LIST OF COMMAND IDENTIFIERS #
@@ -12,6 +13,7 @@ REPORT = '/meldung'
 ALL = '/all'
 LAST = '/letzte'
 FEEDBACK = '/feedback'
+ALL_FEEDBACK = '/all_feedback'
 INLINE_REPORT = '/meldeform'
 ###############################
 # TODO: Put into Hash map in different File
@@ -25,9 +27,13 @@ GIVING_TIPS = 3
 
 
 class Registerbot
-    def initialize(bot_token, report_db, image_path)
+    Inputs = Struct.new(:state, :rating, :tips)
+    logger = Logger.new(STDOUT)
+    logger.level = Logger::DEBUG   
+    def initialize(bot_token, report_db, feedback_db, image_path)
         @token = bot_token
         @reports = report_db
+        @feedback = feedback_db
         @images = image_path
         @user_state = Hash.new
         Telegram::Bot::Client::run(@token) do |reg_bot|
@@ -56,6 +62,14 @@ class Registerbot
             reports << "Meldung Nummer #{report[:id]}: #{report[:activity].inspect}"
         }
         reports.join("\n--------\n")
+    end
+
+    def format_feedback(res)
+        feedbacks = []
+        res.each { |feedback|
+            feedbacks << "Feedback Nummer #{feedback[:id]}: Bewertung: #{feedback[:rating].inspect}, Anmerkungen: #{feedback[:tips].inspect}"
+        }
+        feedbacks.join("\n--------\n")
     end
 
     def start
@@ -93,7 +107,7 @@ class Registerbot
 
     def all
         res = @reports.all
-        reply("Übersicht über alle bisherigen Meldungen:\n\n#{format_results(res)}")
+        reply("Übersicht über alle #{@reports.count} bisherigen Meldungen:\n\n#{format_results(res)}")
     end
 
     def last(args)
@@ -114,32 +128,52 @@ class Registerbot
         end
     end
 
-    def feedback # TODO: save Feedback to new Database Table
-        @user_state[@message.chat.id] = RATING
+    def all_feedback
+        send_message("Alle Feedbacks bisher lauten:\n\n#{format_feedback(@feedback.all)}")
+    end
+
+    def feedback
+        @user_state[@message.chat.id] = Inputs.new(RATING, nil, nil)
         rating = Telegram::Bot::Types::ReplyKeyboardMarkup.new(keyboard:[%w(1 2 3 4 5)], resize_keyboard: true)
         @bot.api.send_message(chat_id: @message.chat.id, text:"Auf einer Skala von 1 (sehr schlecht) bis 5 (sehr gut), wie gefalle ich dir?", reply_markup: rating)
     end
 
     def get_rating(args)
-        @user_state[@message.chat.id] = ASKED_FOR_TIPS
-        @bot.api.send_message(chat_id: @message.chat.id, text:"Danke für deine Bewertung!")
+        case args[0]
+        when "1"
+            send_message("Oh, es tut mir Leid, dass ich deine Erwartungen nicht erfüllen konnte. Mit etwas Feedback kann ich aber betimmt besser werden!")
+        when "2"
+            send_message("Na gut, da ist wohl noch etwas Luft nach oben für mich. Mit ein bisschen Feedback wird das in Zukunft bestimmt besser.")
+        when "3"
+            send_message("")
+        when "4"
+            send_message("")
+        when "5"
+            send_message("Wow, Dankeschön! Freut mich, dass ich dir so gut gefalle. Wenn du Lust hast, lass mir doch trotzdem ein kurzes Feedback da.")
+        else
+            send_message("Das ist leider keine gültige Bewertung, bitte schick mir eine Zahl von 1 bis 5.")
+        end
+        @user_state[@message.chat.id] = Inputs.new(ASKED_FOR_TIPS, args[0], nil)
         decision = Telegram::Bot::Types::ReplyKeyboardMarkup.new(keyboard:[%w(Ja Nein)], resize_keyboard: true)
-        @bot.api.send_message(chat_id: @message.chat.id, text:"Möchtest du mir Verbesserungsvorschläge, Wünsche oder Fehlerberichte geben?", reply_markup: decision)
+        @bot.api.send_message(chat_id: @message.chat.id, text:"Möchtest du mir noch Verbesserungsvorschläge, Wünsche oder Fehlerberichte geben?", reply_markup: decision)
     end
 
     def get_decision(args)
         case args[0]
         when YES
-            @user_state[@message.chat.id] = GIVING_TIPS
+            @user_state[@message.chat.id][:state] = GIVING_TIPS
             hide = Telegram::Bot::Types::ReplyKeyboardRemove.new(remove_keyboard: true, selective: nil)
             @bot.api.send_message(chat_id: @message.chat.id, text:"Was würdest du dir von mir wünschen? Was gefällt dir gut/schlecht?", reply_markup: hide)
         when NO
+            @feedback.insert(:rating => @user_state[@message.chat.id].rating, :tips => "")
             @user_state.delete(@message.chat.id)
             send_message("Okay.")
         end
     end
 
     def get_tips(args)
+        @user_state[@message.chat.id][:tips] = args.join(' ')
+        @feedback.insert(:rating => @user_state[@message.chat.id].rating, :tips => @user_state[@message.chat.id].tips)
         @user_state.delete(@message.chat.id)
         send_message("Vielen Dank für deine Tipps! Dank dir kann ich weiterhin mein bestes geben!")
     end
@@ -158,30 +192,35 @@ class Registerbot
                 text = @message.caption
             end
             args = text.split(' ')
-            case args[0]
-            when START # START Command, start conversation, opens greeting message
-                start()
-            when HELP # HELP Command, Display all possible Commands
-                help()
-            when REPORT # REPORT Command, file a new Report and put it into the Database
-                report(args)
-            when COUNT # COUNT Command, Print the Number of filed Reports
-                count()
-            when ALL # ALL Command, Print all filed Reports
-                all()
-            when LAST # LAST Command, Print all filed Reports from the last 7 (or 'd', if specified) days
-                last(args)
-            when FEEDBACK
-                feedback()
+            if @user_state[@message.chat.id] == nil
+                @user_state[@message.chat.id] = Inputs.new()
+            end
+            case @user_state[@message.chat.id].state
+            when RATING
+                get_rating(args)
+            when ASKED_FOR_TIPS
+                get_decision(args)
+            when GIVING_TIPS
+                get_tips(args)
             else
-                case @user_state[@message.chat.id]
-                when RATING
-                    get_rating(args)
-                when ASKED_FOR_TIPS
-                    get_decision(args)
-                when GIVING_TIPS
-                    get_tips(args)
-                when nil
+                case args[0]
+                when START # START Command, start conversation, opens greeting message
+                    start()
+                when HELP # HELP Command, Display all possible Commands
+                    help()
+                when REPORT # REPORT Command, file a new Report and put it into the Database
+                    report(args)
+                when COUNT # COUNT Command, Print the Number of filed Reports
+                    count()
+                when ALL # ALL Command, Print all filed Reports
+                    all()
+                when LAST # LAST Command, Print all filed Reports from the last 7 (or 'd', if specified) days
+                    last(args)
+                when FEEDBACK
+                    feedback()
+                when ALL_FEEDBACK
+                    all_feedback()
+                else
                     unknown()
                 end
             end

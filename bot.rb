@@ -1,10 +1,10 @@
 require 'sequel'
-require 'FileUtils'
+require 'fileutils'
 require 'logger'
 require './lib/registerbot'
 
 logger = Logger.new(STDOUT)
-logger.level = Logger::DEBUG
+logger.level = Logger::WARN
 
 TOKEN_PATH = "token.priv"
 IMAGE_PATH = "images"
@@ -35,11 +35,21 @@ unless DB.table_exists?(:reports)
         primary_key :id
         String :activity
         Float :timestamp
+        String :image_path
+    end
+end
+
+unless DB.table_exists?(:feedback)
+    DB.create_table :feedback do
+        primary_key :id
+        String :rating
+        String :tips
     end
 end
 
 # Open Table
-reports = DB[:items]
+reports = DB[:reports]
+feedback = DB[:feedback]
 
 # The Telegram API Bot token. Should be stored in a token.priv file.
 begin
@@ -57,7 +67,7 @@ rescue
 end
 
 
-register_bot = Registerbot.new(token, reports, IMAGE_PATH)
+register_bot = Registerbot.new(token, reports, feedback, IMAGE_PATH)
 register_bot.bot_loop
 
 
