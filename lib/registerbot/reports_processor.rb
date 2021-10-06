@@ -3,6 +3,8 @@ require 'telegram/bot'
 require 'sequel'
 require 'fileutils'
 
+MAX_PHOTO_SIZE = 100000
+
 class Reports_processor < Basic_processor
     Report_Inputs = Struct.new(:state, :date, :place, :activity, :contacts, :image_path)
     def initialize(bot, reports_db, image_path, down_url)
@@ -16,15 +18,50 @@ class Reports_processor < Basic_processor
     def format_results(res)
         reports = []
         res.each { |report|
-            reports << "Meldung Nummer #{report[:id]}: #{report[:activity].inspect}"
+            img = ""
+            if report[:image_path] != ""
+                img = "\xF0\x9F\x93\xB7"
+            end
+            if report[:activity].length > 120
+                text = "#{report[:date]}: #{report[:place]}: #{report[:activity][0..119]}..."
+            else
+                text = "#{report[:date]}: #{report[:place]}: #{report[:activity]}"
+            end
+            reports << "Meldung Nummer #{report[:id]}: #{text.inspect} #{img}"
         }
         reports.join("\n--------\n")
+    end
+
+    def inspect(args, message)
+        begin
+            d = Integer(args[1])
+        rescue
+            reply("Du hast keine valide Zahl angegeben, bitte versuche es noch einmal.", message)
+            return
+        end
+        if d <= 0
+            reply("Bitte gib eine Zahl größer als 0 an.", message)
+            return
+        end
+        report = @reports.select(:id, :date, :place, :activity, :image_path, :timestamp).order(:id).where(id: d).all
+        if report == []
+            send_message("Es existiert keine Meldung mit der Nummer #{d}.", message)
+            return
+        end
+        time = Time.at(report[0][:timestamp])
+        date = "Gemeldet am: #{time.day}.#{time.month}.#{time.year} um #{time.hour}:#{time.min < 10 ? "0#{time.min}" : time.min}"
+        text = "#{report[0][:date]}: #{report[0][:place]}: #{report[0][:activity]}"
+        if "#{report[0][:image_path]}" == ""
+            send_message("Die Meldung Nummer #{d} lautet:\n\n#{text}\n#{date}", message)
+        else
+            @bot.api.send_photo(chat_id: message.chat.id, caption: "Die Meldung Nummer #{d} lautet:\n\n#{text}\n#{date}", photo: report[0][:image_path])
+        end
     end
 
     # Return the Reports of the last 'd' Days from the Dataset
     def get_last_days(days)
         now = Time.now
-        @reports.select(:id, :activity).order(:id).where{timestamp > (now - (2592000 * days)).to_f}.all
+        @reports.select(:id, :date, :place, :activity).order(:id).where{timestamp > (now - (2592000 * days)).to_f}.all
     end
 
     def report(args, message) #TODO: Needs complete overhaul, is working, but is pretty shitty rn
@@ -45,7 +82,7 @@ class Reports_processor < Basic_processor
                 rep.append(reps)
             }
             rep.each { |reps| 
-                @reports.insert(:activity => "#{reps[0]}: #{reps[1]}: #{reps[2]}", :contact => reps[3], :timestamp => Time.now.to_f, :image_path => "Kein Bild angegeben.")
+                @reports.insert(:date => reps[0], place => reps[1], :activity =>reps[2], :contact => reps[3], :timestamp => Time.now.to_f, :image_path => "")
             }
             reply("Ich habe deine Meldungen zur Datenbank hinzugefügt. Danke für deine Mithilfe", message)
 
@@ -135,10 +172,20 @@ class Reports_processor < Basic_processor
             send_message_with_markup("Super, dann schick mir doch bitte das Foto.", message, hide)
         when NO
             send_message_with_markup("In Ordnung, ich habe deine Meldung der Datenbank hinzugefügt. Danke für deine Mitarbeit!", message, hide)
-            @user_state[message.chat.id][:image_path] = "Kein Bild angegeben."
+            @user_state[message.chat.id][:image_path] = ""
             rep = @user_state[message.chat.id]
-            @reports.insert(:activity => "#{rep[:date]}: #{rep[:place]}: #{rep[:activity]}", :contact => "#{rep[:contacts]}.", :timestamp => Time.now.to_f, :image_path => "#{rep[:image_path]}")
+            @reports.insert(:date => rep[:date], :place => rep[:place], :activity => rep[:activity], :contact => rep[:contacts], :timestamp => Time.now.to_f, :image_path => "#{rep[:image_path]}")
             @user_state.delete(message.chat.id)
+        end
+    end
+
+    def find_correct_image(message)
+        i = 0
+        message.photo.each do |photo|
+            if photo.file_size > MAX_PHOTO_SIZE
+                return i - 1
+            end
+            i += 1
         end
     end
 
@@ -149,12 +196,17 @@ class Reports_processor < Basic_processor
             return
         end
         if message.photo != []
-            image = @bot.api.get_file(file_id: message.photo[1].file_id)
-            image_path = "#{@images}/#{message.photo[1].file_unique_id}.jpg"
+            img_nr = find_correct_image(message)
+            if img_nr < 0
+                send_message("Das Bild ist zu groß für mich zum Herunterladen, bitte schicke mir ein anderes.", message)
+                return
+            end
+            image = @bot.api.get_file(file_id: message.photo[img_nr].file_id)
+            image_path = "#{@images}/#{message.photo[img_nr].file_id}.jpg"
             image_temp = Down.download("#{@download_url}/#{image["result"]["file_path"]}", destination: "#{image_path}")
-            @user_state[message.chat.id][:image_path] = image_path
+            @user_state[message.chat.id][:image_path] = message.photo[img_nr].file_id
             rep = @user_state[message.chat.id]
-            @reports.insert(:activity => "#{rep[:date]}: #{rep[:place]}: #{rep[:activity]}", :contact => "#{rep[:contacts]}.", :timestamp => Time.now.to_f, :image_path => "#{rep[:image_path]}")
+            @reports.insert(:date => rep[:date], :place => rep[:place], :activity => rep[:activity], :contact => rep[:contacts], :timestamp => Time.now.to_f, :image_path => "#{rep[:image_path]}")
             @user_state.delete(message.chat.id)
             send_message("Geschafft! Ich habe deine Meldung in die Datenbank aufgenommen. Vielen Dank für deine Mitarbeit.", message)
         else
@@ -168,7 +220,7 @@ class Reports_processor < Basic_processor
 
     def all(message)
         res = @reports.all
-        reply("Übersicht über alle #{@reports.count} bisherigen Meldungen:\n\n#{format_results(res)}", message)
+        reply("Übersicht über alle #{@reports.count} bisherigen Meldungen\nEine kleine Kamera neben einer Meldung zeigt, dass zu dieser Meldung auch ein Foto existiert. Benutze #{INSPECT} <Nummer> um dir die Meldung und das Foto anzusehen.\n\n#{format_results(res)}", message)
     end
 
     def last(args, message)
