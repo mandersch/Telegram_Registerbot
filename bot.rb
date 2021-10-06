@@ -35,6 +35,7 @@ unless DB.table_exists?(:reports)
         primary_key :id
         String :activity
         Float :timestamp
+        String :contact
         String :image_path
     end
 end
