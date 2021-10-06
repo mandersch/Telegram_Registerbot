@@ -31,20 +31,24 @@ class Reports_processor < Basic_processor
         if args.count < 2
             reply("Du hast mir leider keine Meldung mitgeteilt. Bitte schreibe nach dem '/meldung' ein paar Worte.", message)
         else
-            if message.photo != []
-                image = @bot.api.get_file(file_id: message.photo[1].file_id)
-                image_temp = Down.download("#{@download_url}/#{image["result"]["file_path"]}", destination: "#{@images}/#{message.photo[1].file_unique_id}.jpg")
-            end
             act = args[1..-1].join(' ')
             act = act.split("%")
+            rep = []
             act.each { |report|
-                @reports.insert(:activity => report.strip(), :timestamp => Time.now.to_f) 
+                reps = report.strip().split(";")
+                if reps.count == 3
+                    reps[3] = "Keine Kontaktmöglichkeit angegeben"
+                elsif reps.count != 4
+                    send_message("Da hat Leider etwas mit deiner Formatierung nicht geklappt. Überprüfe noch einmal ob du Datum, Ort, Aktivität und optional auch Kontaktmöglichkeit wirklich mit einem Semikolon ';' getrennt hast bzw., dass du keine anderen Semikolons verwendet hast. Wenn du Probleme haben solltest, benutze lieber #{FORMULAR_REPORT}.", message)
+                    return
+                end
+                rep.append(reps)
             }
-            if act.count > 1
-               reply("Ich habe deine Meldungen zur Datenbank hinzugefügt. Danke für deine Mithilfe", message)
-            else
-                reply("Ich habe deine Meldung #{act[0].inspect} zur Datenbank hinzugefügt. Danke für deine Mitarbeit.", message)
-            end
+            rep.each { |reps| 
+                @reports.insert(:activity => "#{reps[0]}: #{reps[1]}: #{reps[2]}", :contact => reps[3], :timestamp => Time.now.to_f, :image_path => "Kein Bild angegeben.")
+            }
+            reply("Ich habe deine Meldungen zur Datenbank hinzugefügt. Danke für deine Mithilfe", message)
+
         end
     end
 

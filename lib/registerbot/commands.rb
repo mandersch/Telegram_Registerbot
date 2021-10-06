@@ -3,12 +3,12 @@
 START = '/start'
 HELP = '/hilfe'
 COUNT = '/anzahl'
-REPORT = '/meldung'
+REPORT = '/sammelmeldung'
 ALL = '/all'
 LAST = '/letzte'
 FEEDBACK = '/feedback'
 ALL_FEEDBACK = '/all_feedback'
-FORMULAR_REPORT = '/meldeform'
+FORMULAR_REPORT = '/meldung'
 CANCEL = '/cancel'
 ###############################
 # TODO: Put into Hash map maybe with help messages
