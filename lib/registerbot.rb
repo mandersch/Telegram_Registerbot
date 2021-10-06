@@ -94,6 +94,8 @@ class Registerbot
                     @feedback_processor.feedback(message)
                 when ALL_FEEDBACK
                     @feedback_processor.all_feedback(message)
+                when INSPECT
+                    @reports_processor.inspect(args, message)
                 else
                     @help_processor.unknown(message)
                 end

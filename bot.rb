@@ -32,6 +32,8 @@ end
 unless DB.table_exists?(:reports)
     DB.create_table :reports do
         primary_key :id
+        String :date
+        String :place
         String :activity
         Float :timestamp
         String :contact

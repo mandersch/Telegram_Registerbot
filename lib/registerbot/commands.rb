@@ -9,6 +9,7 @@ LAST = '/letzte'
 FEEDBACK = '/feedback'
 ALL_FEEDBACK = '/all_feedback'
 FORMULAR_REPORT = '/meldung'
+INSPECT = '/zeige'
 CANCEL = '/cancel'
 ###############################
 # TODO: Put into Hash map maybe with help messages
