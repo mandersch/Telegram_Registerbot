@@ -2,3 +2,5 @@
 *.priv
 images
 data
+.yardoc
+doc
