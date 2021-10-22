@@ -28,31 +28,6 @@ rescue
     return
 end
 
-# Create Table
-unless DB.table_exists?(:reports)
-    DB.create_table :reports do
-        primary_key :id
-        String :date
-        String :place
-        String :activity
-        Float :timestamp
-        String :contact
-        String :image_path
-    end
-end
-
-unless DB.table_exists?(:feedback)
-    DB.create_table :feedback do
-        primary_key :id
-        String :rating
-        String :tips
-    end
-end
-
-# Open Table
-reports = DB[:reports]
-feedback = DB[:feedback]
-
 # The Telegram API Bot token. Should be stored in a token.priv file.
 begin
     token_file = File.new(TOKEN_PATH, "r")
@@ -69,7 +44,7 @@ rescue
 end
 
 
-register_bot = Registerbot.new(token, reports, feedback, IMAGE_PATH)
+register_bot = Registerbot.new(token, DB, IMAGE_PATH)
 register_bot.bot_loop
 
 
