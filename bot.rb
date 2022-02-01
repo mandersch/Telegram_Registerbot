@@ -8,6 +8,8 @@ logger.level = Logger::WARN
 
 TOKEN_PATH = "token.priv"
 IMAGE_PATH = "images"
+LOG_PATH = "log"
+LOG_FILE = "log.txt"
 DB_FOLDER = "data"
 DB_FILE = "reports.db"
 
@@ -28,6 +30,20 @@ rescue
     return
 end
 
+# Check if the Log folder can be accessed
+begin
+    Dir.mkdir(LOG_PATH) unless File.exists?(LOG_PATH)
+    log_path = "#{LOG_PATH}/#{LOG_FILE}"
+    unless File.exists?(log_path)
+        log_file = File.new(log_path, "w+") 
+        log_file.close()
+    end
+
+rescue
+    logger.error("Logfolder could neither be opened, nor created")
+    return
+end
+
 # The Telegram API Bot token. Should be stored in a token.priv file.
 begin
     token_file = File.new(TOKEN_PATH, "r")
@@ -44,8 +60,8 @@ rescue
 end
 
 
-register_bot = Registerbot.new(token, DB, IMAGE_PATH)
-register_bot.bot_loop
+register_bot = Registerbot.new(token, DB, IMAGE_PATH,log_path)
+register_bot.run
 
 
 

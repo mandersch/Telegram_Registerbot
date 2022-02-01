@@ -34,10 +34,16 @@ Currently, the bot is only available in german, as switching languages requires 
 
 ## Quick Overview
 
-When run, the `bot.rb` script creates the necessary folders and checks for the key and then creates anew instance of the actual bot and starts it's listening loop.
-The definition of this bot can be found in `registerbot.rb`. There you will find the bots consists of four main components: three processing units and a `bot`. 
+When run, the `bot.rb` script creates the necessary folders and checks for the key and then creates a new instance of the actual bot and starts it's listening loop.
+The definition of this bot can be found in `registerbot.rb`. There you will find, that the bots consists of five main components: a `command_handler`, three processing units inside that very handler and a `bot`. 
 The `bot` is the actual interface to the Telegram Bot API and is used for all communications with users on Telegram (e.g. listening for their messages, responding to messages).
-The `Registerbot` instance runs the `bot_loop`, and sorts incoming messages to each of the three processors: the `help_processor` deals with all messages reagarding questions to the bot, help messages etc. The `reports_processor` is the heart and soul of this bot, dealing with incoming reports or querys on the reports dataset. Lastly the `feedback_processor` deals with all the incoming feedback and stores it in a separate Database table.
+The `Registerbot` instance runs the `bot_loop`, and the `command_handler` sorts incoming messages to each of the three processors: the `help_processor` deals with all messages reagarding questions to the bot, help messages etc. The `reports_processor` is the heart and soul of this bot, dealing with incoming reports or querys on the reports dataset. Lastly the `feedback_processor` deals with all the incoming feedback and stores it in a separate Database table.
+
+Per default, the bot saves all its logs into a file located at './log/log.txt'. You can run 
+```bash
+tail -f log/log.txt
+```
+to view all status logs written to this file while running. (Might need to install tail on windows, have a look [here](https://www.technlg.net/windows/download-windows-resource-kit-tools/))
 
 For a more detailed view on all the components, view the documentation of all this using `yard`, which should be installed alongside all other gems when running `bundle`. 
 To do so simply run

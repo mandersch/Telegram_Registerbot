@@ -16,8 +16,8 @@ class Feedback_processor < Basic_processor
     # @param bot [Telegram::Bot::Client] the actual bot communicating with the telegram bot-API
     # @param feedback_db [Sequel::Dataset] the Database table to store all received feedbacks in, requires the fields 'id', 'rating' and 'tips'
     # @note feedback_db requires specific fields! Those are: 'primary_key :id', 'String :rating', 'String :tips'
-    def initialize(bot, feedback_db)
-        super(bot)
+    def initialize(bot, feedback_db, logger)
+        super(bot, logger)
         @feedback = feedback_db
     end
 
@@ -48,6 +48,7 @@ class Feedback_processor < Basic_processor
     #   and is directed to the `get_rating()` method (see #get_rating)
     # @note This method may modify our application state 
     def feedback(message)
+        @logger.debug("User with uid #{message.from.id} is giving feedback")
         @user_state[message.chat.id] = Feedback_Inputs.new(RATING, nil, nil)
         # Define the possible Ratings (1-5), can also be changed up later, but requires adjustment to `get_rating` method in that case
         rating = Telegram::Bot::Types::ReplyKeyboardMarkup.new(keyboard:[%w(1 2 3 4 5)], resize_keyboard: true)
@@ -79,6 +80,7 @@ class Feedback_processor < Basic_processor
             feedback(message)
             return
         end
+        @logger.debug("User with uid #{message.from.id} rated the bot #{answer}")
         @user_state[message.chat.id] = Feedback_Inputs.new(ASKED_FOR_TIPS, answer, nil)
         decision = Telegram::Bot::Types::ReplyKeyboardMarkup.new(keyboard:[%w(Ja Nein)], resize_keyboard: true)
         send_message_with_markup("Möchtest du mir noch Verbesserungsvorschläge, Wünsche oder Fehlerberichte geben?", message, decision)
@@ -100,10 +102,13 @@ class Feedback_processor < Basic_processor
         case answer
         when YES
             @user_state[message.chat.id][:state] = GIVING_TIPS
-            send_message_with_markup("Was würdest du dir von mir wünschen? Was gefällt dir gut/schlecht?", message, hide)
+            @logger.debug("User with uid #{message.from.id} agreed to giving additional hints")
+            send_message_with_markup("Was würdest du dir von mir wünschen? Was gefällt dir gut/schlecht?", message, hide)     
         when NO
             @feedback.insert(:rating => @user_state[message.chat.id].rating, :tips => "")
             @user_state.delete(message.chat.id)
+            @logger.debug("User with uid #{message.from.id} declined giving additional hints")
+            @logger.info("User feedback from uid #{message.from.id} has been added to the database")
             send_message_with_markup("In Ordnung.", message, hide)
         else
             send_message("Das habe ich nicht verstanden. Möchtest du mir noch Verbesserungsvorschläge, Wünsche oder Fehlerberichte geben?", message)
@@ -118,6 +123,7 @@ class Feedback_processor < Basic_processor
     def get_tips(message)
         @user_state[message.chat.id][:tips] = message.text
         @feedback.insert(:rating => @user_state[message.chat.id].rating, :tips => @user_state[message.chat.id].tips)
+        @logger.info("User feedback #{message.text.inspect} from uid #{message.from.id} has been added to the database")
         @user_state.delete(message.chat.id)
         send_message("Vielen Dank für deine Tipps! Dank dir kann ich weiterhin mein bestes geben!", message)
     end
