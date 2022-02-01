@@ -1,6 +1,7 @@
 require './lib/registerbot/basic_processor'
 require 'telegram/bot'
 require 'sequel'
+require 'down'
 require 'fileutils'
 
 # The maximum size of a photo to download to the image folder
@@ -25,8 +26,8 @@ class Reports_processor < Basic_processor
     # @param down_url [String] the API URL to download the images from
     # @note reports_db requires specific fields! Those are: 
     #   'primary_key :id', 'String :date', 'String :place', 'String :activity', 'String :contact', 'String :image_path' 'Float :timestamp'
-    def initialize(bot, reports_db, image_path, down_url)
-        super(bot)
+    def initialize(bot, reports_db, image_path, down_url, logger)
+        super(bot, logger)
         @reports = reports_db
         @images = image_path
         @download_url = down_url
@@ -133,7 +134,7 @@ class Reports_processor < Basic_processor
     # @note This method may modify our application state
     def form_report(message)
         send_message("Okay, du kannst mir jetzt Schritt für Schritt die Daten einer Meldung durchgeben. Wenn du dich zwischendurch umentscheidest benutze #{CANCEL} um den Vorgang abzubrechen, dann lösche ich alle Teile der Meldung die du mir bisher gesagt hast.\nLass uns mit dem Datum anfangen; wann hast du etwas beobachtet?", message)
-        @user_state[message.chat.id] = Report_Inputs.new(REPORTING_DATE, nil, nil, nil, nil, nil)
+        @user_state[message.chat.id] = Report_Inputs.new(REPORTING_DATE, nil, nil, nil, nil, nil)    
     end
 
     # Get the incident date from the user and store it in the `user_state`. 
@@ -203,21 +204,17 @@ class Reports_processor < Basic_processor
     #   providing an image and is directed to the `get_iamge_decision()` method (see #get_image_decision)
     # @note This method may modify our application state 
     def get_contact_decision(answer, message)
-        puts "start"
         if answer == CANCEL
             send_message("Du hast den Vorgang abgebrochen. Ich lösche deine bisherigen Eingaben", message)
             @user_state.delete(message.chat.id)
             return
         end
-        puts "here"
         hide = Telegram::Bot::Types::ReplyKeyboardRemove.new(remove_keyboard: true, selective: nil)
         case answer
         when YES
-            puts "y"
             @user_state[message.chat.id][:state] = GIVING_CONTACTS
             send_message_with_markup("Wie bist du zu erreichen? (E-Mail / Telefon / Telegram / oä)", message, hide)
         when NO
-            puts "n"
             @user_state[message.chat.id][:contacts] = "Keine Kontaktmöglichkeit hinterlassen"
             @user_state[message.chat.id][:state] = ASKED_FOR_IMAGE
             send_message_with_markup("In Ordnung.", message, hide)
@@ -264,15 +261,12 @@ class Reports_processor < Basic_processor
             @user_state.delete(message.chat.id)
             return
         end
-        puts "here"
         hide = Telegram::Bot::Types::ReplyKeyboardRemove.new(remove_keyboard: true, selective: nil)
         case answer
         when YES
             @user_state[message.chat.id][:state] = GIVING_IMAGE
             send_message_with_markup("Super, dann schick mir doch bitte das Foto.", message, hide)
-            puts "y"
         when NO
-            puts "no"
             send_message_with_markup("In Ordnung, ich habe deine Meldung der Datenbank hinzugefügt. Danke für deine Mitarbeit!", message, hide)
             @user_state[message.chat.id][:image_path] = ""
             rep = @user_state[message.chat.id]

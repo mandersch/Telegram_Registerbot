@@ -24,6 +24,7 @@ class Help_processor < Basic_processor
     #
     # @param message [Telegram::Bot::Types::Message] the original message received by the bot, used to identify the correct `chat_id` to respond to
     def unknown(message)
+        @logger.debug("Did not understand message #{message.text} from uid #{message.from.id}")
         send_message("Sorry, ich weiß nicht was du mir sagen möchtest. Probier doch mal #{HELP}, um zu sehen was ich kann.", message)
     end
 end
