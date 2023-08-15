@@ -1,6 +1,7 @@
 source 'https://rubygems.org'
 gem 'telegram-bot-ruby'
 gem 'sequel'
+gem 'sqlite3'
 gem 'fileutils', '~> 1.5'
 gem 'down'
 gem 'logger'
